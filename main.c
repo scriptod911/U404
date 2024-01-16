@@ -30,88 +30,72 @@ void execute_command(const char* command);
 void execute_script(char* filename);
 void print_help();
 
-// Function to execute 'ls' command
+int compare(const struct dirent **a, const struct dirent **b) {
+    return strcmp((*a)->d_name, (*b)->d_name);
+}
+
+void print_file_info(struct dirent *entry) {
+    struct stat fileStat;
+    char timeBuffer[80];
+
+    if (stat(entry->d_name, &fileStat) < 0) {
+        perror("stat");
+        return;
+    }
+
+    // Convert file size to human-readable format
+    double size = fileStat.st_size;
+    char unit[3];
+    if (size < 1024) {
+        strcpy(unit, "B");
+    } else if (size < pow(1024, 2)) {
+        size /= 1024;
+        strcpy(unit, "KB");
+    } else if (size < pow(1024, 3)) {
+        size /= pow(1024, 2);
+        strcpy(unit, "MB");
+    } else if (size < pow(1024, 4)) {
+        size /= pow(1024, 3);
+        strcpy(unit, "GB");
+    } else {
+        size /= pow(1024, 4);
+        strcpy(unit, "TB");
+    }
+
+    strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", localtime(&fileStat.st_mtime));
+
+    printf("%-20s %.2f %s %-20s\n", entry->d_name, size, unit, timeBuffer);
+}
+
 void execute_ls() {
-    #ifdef _WIN32
-        // Windows-specific code
-        WIN32_FIND_DATA findData;
-        HANDLE hFind;
-        SYSTEMTIME stUTC, stLocal;
-        FILETIME ftCreate, ftAccess, ftWrite;
+    DIR *dir;
+    struct dirent **entryList;
+    int n;
 
-        hFind = FindFirstFile("*", &findData);
-        if (hFind == INVALID_HANDLE_VALUE) {
-            printf("FindFirstFile failed (%d)\n", GetLastError());
-            return;
+    // Read directory entries into an array
+    n = scandir(".", &entryList, NULL, compare);
+    if (n == -1) {
+        perror("scandir");
+        return;
+    }
+
+    printf("%-20s %-10s %-20s\n", "Name", "Size", "Last Modified");
+    printf("----------------------------------------------\n");
+
+    for (int i = 0; i < n; i++) {
+        struct dirent *entry = entryList[i];
+
+        // Skip hidden files
+        if (entry->d_name[0] == '.') {
+            continue;
         }
 
-        do {
-            // Convert file size to human-readable format
-            LARGE_INTEGER size;
-            size.HighPart = findData.nFileSizeHigh;
-            size.LowPart = findData.nFileSizeLow;
+        print_file_info(entry);
 
-            // Convert the last-write time to local time.
-            FileTimeToLocalFileTime(&findData.ftLastWriteTime, &ftCreate);
-            FileTimeToSystemTime(&ftCreate, &stUTC);
-            SystemTimeToTzSpecificLocalTime(NULL, &stUTC, &stLocal);
+        free(entryList[i]);
+    }
 
-            printf("%-20s %-10lld %-20s\n", findData.cFileName, size.QuadPart, asctime(gmtime(&findData.ftLastWriteTime)));
-        } while (FindNextFile(hFind, &findData) != 0);
-
-        FindClose(hFind);
-    #else
-        // Unix-specific code
-        DIR *dir;
-        struct dirent *entry;
-        struct stat fileStat;
-        char timeBuffer[80];
-
-        dir = opendir(".");
-        if (dir == NULL) {
-            perror("opendir");
-            return;
-        }
-
-        printf("%-20s %-10s %-20s\n", "Name", "Size", "Last Modified");
-        printf("----------------------------------------------\n");
-
-        while ((entry = readdir(dir)) != NULL) {
-            if (stat(entry->d_name, &fileStat) < 0) {
-                perror("stat");
-                continue;
-            }
-
-            // Convert file size to human-readable format
-            double size = fileStat.st_size;
-            char unit[3];
-            if (size < 1024) {
-                strcpy(unit, "B");
-            } else if (size < pow(1024, 2)) {
-                size /= 1024;
-                strcpy(unit, "KB");
-            } else if (size < pow(1024, 3)) {
-                size /= pow(1024, 2);
-                strcpy(unit, "MB");
-            } else if (size < pow(1024, 4)) {
-                size /= pow(1024, 3);
-                strcpy(unit, "GB");
-            } else {
-                size /= pow(1024, 4);
-                strcpy(unit, "TB");
-            }
-
-            strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", localtime(&fileStat.st_mtime));
-
-            if (strcmp(entry->d_name, selected_file) == 0) {
-                printf("\033[0;33m%-20s %.2f %s %-20s\033[0m\n", entry->d_name, size, unit, timeBuffer);
-            } else {
-                printf("%-20s %.2f %s %-20s\n", entry->d_name, size, unit, timeBuffer);
-            }
-        }
-
-        closedir(dir);
-    #endif
+    free(entryList);
 }
 
 // Function to execute 'pwd' command
