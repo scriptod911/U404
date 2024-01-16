@@ -29,20 +29,17 @@ char selected_file[MAX_FILENAME_LENGTH] = "";
 void execute_command(const char* command);
 void execute_script(char* filename);
 void print_help();
-
 int compare(const struct dirent **a, const struct dirent **b) {
     return strcmp((*a)->d_name, (*b)->d_name);
 }
 
-void print_file_info(struct dirent *entry) {
+void print_file_info(const char* filename) {
     struct stat fileStat;
     char timeBuffer[80];
-
-    if (stat(entry->d_name, &fileStat) < 0) {
+    if (stat(filename, &fileStat) < 0) {
         perror("stat");
         return;
     }
-
     // Convert file size to human-readable format
     double size = fileStat.st_size;
     char unit[3];
@@ -61,38 +58,31 @@ void print_file_info(struct dirent *entry) {
         size /= pow(1024, 4);
         strcpy(unit, "TB");
     }
-
     strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", localtime(&fileStat.st_mtime));
-
-    printf("%-20s %.2f %s %-20s\n", entry->d_name, size, unit, timeBuffer);
+    printf("%-20s %.2f %s %-20s\n", filename, size, unit, timeBuffer);
 }
 
 void execute_ls() {
     DIR *dir;
+    struct dirent *entry;
     struct dirent **entryList;
     int n;
-
     // Read directory entries into an array
     n = scandir(".", &entryList, NULL, compare);
     if (n == -1) {
         perror("scandir");
         return;
     }
-
     printf("%-20s %-10s %-20s\n", "Name", "Size", "Last Modified");
     printf("----------------------------------------------\n");
-
     for (int i = 0; i < n; i++) {
-        struct dirent *entry = entryList[i];
-
+        entry = entryList[i];
         // Skip hidden files
         if (entry->d_name[0] == '.') {
             continue;
         }
-
-        print_file_info(entry);
-
-        free(entryList[i]);
+        print_file_info(entry->d_name);
+        free(entryList[i]); 
     }
 
     free(entryList);
@@ -119,7 +109,8 @@ void execute_clear() {
 
 // Function to execute 'select-file' command
 void execute_select_file(const char *filename) {
-    strcpy(selected_file, filename);
+    strncpy(selected_file, filename, MAX_FILENAME_LENGTH - 1);
+    selected_file[MAX_FILENAME_LENGTH - 1] = '\0';
 }
 
 // Function to execute 'delete' command
@@ -128,7 +119,6 @@ void execute_delete() {
         printf("No file selected.\n");
         return;
     }
-
     #ifdef _WIN32
         if (DeleteFile(selected_file) != 0) {
             printf("Deleted successfully.\n");
@@ -146,7 +136,7 @@ void execute_delete() {
     #endif
 }
 
-// Function to execute 'makefile' command
+// Function to execute 'makefolder' command
 void execute_makefolder(const char *foldername) {
     #ifdef _WIN32
         if (CreateDirectory(foldername, NULL) != 0) {
@@ -164,17 +154,17 @@ void execute_makefolder(const char *foldername) {
 }
 
 // Function to execute 'makefile' command
-void execute_makefile(char* filename){
+void execute_makefile(const char* filename){
     FILE *file = fopen(filename, "w");
+
     if (file == NULL)
     {
         printf("Error opening file!\n");
         return;
     }
-
+    
     /* Write to file */
     fprintf(file, "This is a new file created by the U404-Shell.\n");
-
     /* Close file */
     fclose(file);
 }
@@ -210,11 +200,12 @@ bool is_even(int a) {
 
 // Function to check a condition
 bool check_condition(const char* condition) {
-    char condCopy[1024];
-    strncpy(condCopy, condition, 1023);
-    condCopy[1023] = '\0';  // Ensure null-termination
 
+    char condCopy[MAX_CONDITION_LENGTH];
+    strncpy(condCopy, condition, MAX_CONDITION_LENGTH - 1);
+    condCopy[MAX_CONDITION_LENGTH - 1] = '\0';  // Ensure null-termination
     char* token = strtok(condCopy, " ");
+
     if (token != NULL) {
         if (strcmp(token, "file_exists") == 0) {
             token = strtok(NULL, " ");
@@ -232,6 +223,7 @@ bool check_condition(const char* condition) {
         }
         // Add more conditions here
     }
+
     return false; // Default to false if condition is unrecognized
 }
 
@@ -275,17 +267,15 @@ void execute_script(char* filename) {
         perror("Failed to open script file");
         return;
     }
-
-    char command[1024];
+    char command[MAX_COMMAND_LENGTH];
     int if_depth = 0; // Track nesting level of if statements
-    bool condition_stack[10] = {false}; // Stack to track conditions for nested if statements
+    bool condition_stack[MAX_IF_DEPTH] = {false}; // Stack to track conditions for nested if statements
     bool execute_command_flag = true; // Flag to determine whether to execute a command
 
     while (fgets(command, sizeof(command), file)) {
         trim_newline(command);
-
         if (strncmp(command, "if ", 3) == 0) {
-            if (if_depth < 10) {
+            if (if_depth < MAX_IF_DEPTH) {
                 execute_command_flag = (if_depth == 0) || (condition_stack[if_depth - 1] && execute_command_flag);
                 condition_stack[if_depth++] = check_condition(command + 3) && execute_command_flag;
             } else {
@@ -336,10 +326,8 @@ int main() {
     while (1) {
         printf("U404-Shell> ");
         fgets(command, MAX_COMMAND_LENGTH, stdin);
-
         // Remove newline character
         command[strcspn(command, "\n")] = 0;
-
         execute_command(command);
     }
 
